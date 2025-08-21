@@ -213,7 +213,7 @@ class NEXRADDownloader:
                 #    filename = filename[:-3]  # Remove .gz
 
                 # Debug print
-                print(f"Processing file: {filename}")
+                #print(f"Processing file: {filename}")
 
                 # Parse V06 format: KLWX20160621_000202_V06
                 if filename.startswith(radar_site) and filename.endswith("_V06"):
@@ -223,7 +223,7 @@ class NEXRADDownloader:
                         timestamp_part = timestamp_part[:-4]  # Remove _V06
 
                     parts = timestamp_part.split("_")
-                    print(f"  V06 format - timestamp parts: {parts}")
+                    #print(f"  V06 format - timestamp parts: {parts}")
 
                     if len(parts) == 2:
                         date_str = parts[0]  # YYYYMMDD (20160621)
@@ -522,7 +522,7 @@ class Radar3DVisualizer:
         elevation_indices=None,
         field_name="reflectivity",
         reflectivity_threshold=0,
-        max_range_km=200,
+        max_range_km=250,
     ):
         """
         Create interactive 3D plot of radar data.
@@ -565,60 +565,70 @@ class Radar3DVisualizer:
         any_points_added = False
 
         # Loop over sweeps
+        all_points = 0
         for sweep_idx in elevation_indices:
             if sweep_idx >= len(radar_data[field_name]):
                 continue
+            for c in range(1, 2):
+                field_data = radar_data[field_name][sweep_idx]
+                x = radar_data["coordinates"]["x"][sweep_idx]
+                y = radar_data["coordinates"]["y"][sweep_idx]
+                z = radar_data["coordinates"]["z"][sweep_idx]
+                
+                for val in z:
+                    val = (c * 10) + val
 
-            field_data = radar_data[field_name][sweep_idx]
-            x = radar_data["coordinates"]["x"][sweep_idx]
-            y = radar_data["coordinates"]["y"][sweep_idx]
-            z = radar_data["coordinates"]["z"][sweep_idx]
+                # Filter by range and threshold
+                max_range_m = max_range_km * 1000
+                range_mask = np.sqrt(x**2 + y**2) <= max_range_m
+                ref_mask = field_data >= reflectivity_threshold
 
-            # Filter by range and threshold
-            max_range_m = max_range_km * 1000
-            range_mask = np.sqrt(x**2 + y**2) <= max_range_m
-            ref_mask = field_data >= reflectivity_threshold
+                # Keep valid points (ignore masked values)
+                combined_mask = range_mask & ref_mask & ~np.ma.getmaskarray(field_data)
 
-            # Keep valid points (ignore masked values)
-            combined_mask = range_mask & ref_mask & ~np.ma.getmaskarray(field_data)
+                if not np.any(combined_mask):
+                    continue
 
-            if not np.any(combined_mask):
-                continue
+                any_points_added = True
 
-            any_points_added = True
+                # Create 3D points array
+                points = np.column_stack([
+                    x[combined_mask].flatten(),
+                    y[combined_mask].flatten(),
+                    z[combined_mask].flatten(),
+                ])
 
-            # Create 3D points array
-            points = np.column_stack([
-                x[combined_mask].flatten(),
-                y[combined_mask].flatten(),
-                z[combined_mask].flatten(),
-            ])
+                values = field_data[combined_mask].flatten()
 
-            values = field_data[combined_mask].flatten()
+                all_points += len(points)
 
-            # Create PyVista mesh
-            cloud = pv.PolyData(points)
-            cloud[field_name] = values
+                # Create PyVista mesh
+                cloud = pv.PolyData(points)
+                cloud[field_name] = values
 
-            plotter.add_mesh(
-                cloud,
-                scalars=field_name,
-                cmap=colormap,
-                clim=[-20, 80],  # typical dBZ range
-                point_size=4,
-                render_points_as_spheres=True,
-                opacity=0.85,
-                scalar_bar_args={
-                    "title": f"{field_name.capitalize()}",
-                    "vertical": True,
-                    "n_labels": 5,
-                },
-            )
+                plotter.add_mesh(
+                    cloud,
+                    scalars=field_name,
+                    cmap=colormap,
+                    clim=[-20, 80],  # typical dBZ range
+                    point_size=10,
+                    render_points_as_spheres=True,
+                    opacity=0.85,
+                    scalar_bar_args={
+                        "title": f"{field_name.capitalize()}",
+                        "vertical": True,
+                        "n_labels": 5,
+                    },
+                )
+
+        print("points in radar: " + str(all_points))
 
         if not any_points_added:
             print("No points passed the filter — try lowering the threshold or increasing range.")
             return
-
+        
+        #zscale for more representative height
+        plotter.set_scale(zscale=5)
         plotter.add_axes()
         plotter.show_grid()
         plotter.show()
@@ -632,7 +642,7 @@ if __name__ == "__main__":
 
     # List available radar sites on that day
     radars = downloader.list_available_radars(date=target_time)
-    print(f"Available radars on {target_time.date()}: {radars}")
+    #print(f"Available radars on {target_time.date()}: {radars}")
 
     # Choose a radar site; KTLX if available, else first in list
     radar_site = "KLWX" if "KLWX" in radars else (radars[0] if radars else None)
@@ -659,11 +669,11 @@ if __name__ == "__main__":
             visualizer.create_3d_plot(
                 radar_data,
                 reflectivity_threshold=10,
-                max_range_km=150,
+                max_range_km=250,
             )
 
             # Cleanup temp file
             if file_path and os.path.exists(file_path):
                 os.remove(file_path)
         else:
-            print("No suitable radar file found near the specified time.")
+            print("No suitable radar file found near the specified time.")  
