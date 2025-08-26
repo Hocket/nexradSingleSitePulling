@@ -547,7 +547,7 @@ class Radar3DVisualizer:
             return
         grid = pyart.map.grid_from_radars(
             radar,
-            grid_shape=(31,241,241),
+            grid_shape=(101, 601, 601),
             grid_limits=[z_max, y_max, x_max],
             fields=rfields
         )
@@ -578,8 +578,35 @@ class Radar3DVisualizer:
         lut.apply_cmap(nws_cmap)
         lut.scalar_range = (-10, 75)
 
-        volume_filtered = volume.threshold(20, scalars='reflectivity')
+        #volume_filtered = volume.threshold(20, scalars='reflectivity')
+        """
+        Progressive opacity
+        """
 
+        dbz_ranges = [
+        #(2, 10, 0.2, 'lightBlue'),   # clouds
+        #(10, 20, 0.5, 'blue'),   # clouds
+        (20, 35, 0.7, 'yellow'),   # Light precip
+        (35, 50, 0.8, 'green'),       # Moderate precip  
+        (50, 65, 0.9, 'red'),          # Heavy precip
+        (65, 75, 1, 'purple')        # Extreme precip
+        ]
+        
+        plotter = pv.Plotter()
+        
+        for min_dbz, max_dbz, opacity, color_hint in dbz_ranges:
+            volume_range = volume.threshold([min_dbz, max_dbz], scalars='reflectivity')
+            
+            if volume_range.n_points > 0:
+                plotter.add_mesh(
+                    volume_range,
+                    scalars='reflectivity',
+                    cmap=lut,
+                    opacity=opacity,
+                    clim=[-10, 75]
+                )
+        plotter.show()
+        
         """ Mesh seems to render opacity properly, 
         attempt both with volumes/meshes filled using reflectivity ranges
         
@@ -590,7 +617,6 @@ class Radar3DVisualizer:
             opacity='linear',
             clim=[0,60]
         )
-        """
         plotter.add_mesh(
             volume_filtered,
             scalars='reflectivity',
@@ -599,6 +625,7 @@ class Radar3DVisualizer:
             clim=[20,70]
         )
         plotter.show()
+        """
 
 
 if __name__ == "__main__":
@@ -634,7 +661,7 @@ if __name__ == "__main__":
             visualizer = Radar3DVisualizer()
             visualizer.create_3d_plot(
                 radar,
-                reflectivity_threshold=10,
+                reflectivity_threshold=20,
             )
 
             # Cleanup temp file
